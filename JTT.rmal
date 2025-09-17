@@ -1,0 +1,43 @@
+import json
+import argparse
+
+def extract_paths(d, prefix=''):
+    paths = []
+    if isinstance(d, dict):
+        for k, v in d.items():
+            new_prefix = f"{prefix}.{k}" if prefix else k
+            paths.extend(extract_paths(v, new_prefix))
+    elif isinstance(d, list):
+        if len(d) > 0:
+            new_prefix = f"{prefix}[]"
+            paths.extend(extract_paths(d[0], new_prefix))
+    else:
+        paths.append(prefix)
+    return paths
+
+# 设置命令行参数，带默认值
+parser = argparse.ArgumentParser(description="提取 JSON 叶子键路径")
+parser.add_argument('-i', '--input', default='input.json', help="输入 JSON 文件名，默认 input.json")
+parser.add_argument('-o', '--output', default='output.txt', help="输出文本文件名，默认 output.txt")
+args = parser.parse_args()
+
+# 读取 JSON 文件
+try:
+    with open(args.input, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print(f"文件 {args.input} 未找到！")
+    exit()
+except json.JSONDecodeError:
+    print(f"文件 {args.input} 不是有效的 JSON 文件！")
+    exit()
+
+# 提取路径
+all_paths = extract_paths(data)
+
+# 写入输出文件，保留数组标记 []
+with open(args.output, 'w', encoding='utf-8') as f:
+    for path in all_paths:
+        f.write(path + '\n')
+
+print(f"提取完成，结果已保存到 {args.output}")
