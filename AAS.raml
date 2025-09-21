@@ -1,0 +1,113 @@
+import re
+import argparse
+import os
+
+def process_renamed_file(renamed_file_path, output_file_path):
+    """
+    处理重命名后的文件，将 "Amount" 键值对替换为嵌套对象。
+    
+    Args:
+        renamed_file_path (str): 重命名键后的 JSON 文件的路径。
+        output_file_path (str): 输出文件路径。
+    """
+    print(f"正在处理重命名文件：{renamed_file_path}")
+    try:
+        with open(renamed_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # 正则表达式：匹配键名以 "Amount" 结尾的键值对
+        renamed_pattern = re.compile(r'^([\t\s]*)(".*Amount")\s*:\s*(".*")(,?)', re.MULTILINE)
+        
+        def replace_renamed(match):
+            indent = match.group(1)
+            key = match.group(2)
+            value = match.group(3)
+            comma = match.group(4)
+            
+            new_content = (
+                f"{indent}{key} : {{\n"
+                f"{indent}\t\"amount\" : {value},\n"
+                f"{indent}\t\"currencyCode\" : \"HKD\"\n"
+                f"{indent}}}{comma}"
+            )
+            return new_content
+        
+        new_content = renamed_pattern.sub(replace_renamed, content)
+
+        with open(output_file_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+            
+        print(f"处理完成，结果已保存到：{output_file_path}")
+    
+    except FileNotFoundError:
+        print(f"错误：未找到文件 {renamed_file_path}")
+        return
+
+def process_original_file(original_file_path, output_file_path):
+    """
+    处理原始文件，将特定键值对替换为两行，并递增 N/A 键名后的数字。
+    
+    Args:
+        original_file_path (str): 原始 JSON 文件的路径。
+        output_file_path (str): 输出文件路径。
+    """
+    print(f"正在处理原始文件：{original_file_path}")
+    try:
+        with open(original_file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            
+        new_lines = []
+        counter = 1
+        
+        # 正则表达式：匹配键名以 "_amount" 结尾的键值对
+        original_pattern = re.compile(r'^([\t\s]*)(".*_amount")\s*:\s*(".*")(,?)')
+        
+        for line in lines:
+            match = original_pattern.match(line)
+            if match:
+                indent = match.group(1)
+                key_value = match.group(2) + ":" + match.group(3)
+                comma = match.group(4)
+                
+                # 构建新的替换内容
+                new_key_value_line = f'{indent}"N/A_currencyCode_{counter}" : ""'
+                
+                # 重新组合为两行，并正确处理逗号
+                new_line_content = f"{indent}{key_value},\n{new_key_value_line}{comma}\n"
+                
+                new_lines.append(new_line_content)
+                counter += 1
+            else:
+                new_lines.append(line)
+
+        with open(output_file_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+            
+        print(f"处理完成，结果已保存到：{output_file_path}")
+        
+    except FileNotFoundError:
+        print(f"错误：未找到文件 {original_file_path}")
+        return
+
+def main():
+    parser = argparse.ArgumentParser(description='根据规则修改 JSON 文件。')
+    parser.add_argument('-i', '--input', nargs=2, default=['papi_input.json', 'sapi_input.json'],
+                        help='提供输入文件名，格式为：<重命名文件> <原始文件>。')
+    parser.add_argument('-o', '--output', nargs=2, default=['papi_output.json', 'sapi_output.json'],
+                        help='提供输出文件名，格式为：<重命名文件_输出> <原始文件_输出>。')
+
+    args = parser.parse_args()
+
+    renamed_input = args.input[0]
+    original_input = args.input[1]
+    
+    renamed_output = args.output[0]
+    original_output = args.output[1]
+
+    # 执行处理函数
+    process_renamed_file(renamed_input, renamed_output)
+    print("-" * 20)
+    process_original_file(original_input, original_output)
+
+if __name__ == "__main__":
+    main()
