@@ -1,43 +1,115 @@
+import sys
 import json
-import argparse
+import re
+import os
 
-def extract_paths(d, prefix=''):
-    paths = []
-    if isinstance(d, dict):
-        for k, v in d.items():
-            new_prefix = f"{prefix}.{k}" if prefix else k
-            paths.extend(extract_paths(v, new_prefix))
-    elif isinstance(d, list):
-        if len(d) > 0:
-            new_prefix = f"{prefix}[]"
-            paths.extend(extract_paths(d[0], new_prefix))
+def get_leaf_keys(data, parent_key=''):
+    """
+    递归遍历 JSON 数据，提取所有叶子键的路径。
+
+    参数:
+    data (dict|list|any): 要遍历的 JSON 数据。
+    parent_key (str): 当前键的父路径。
+    
+    返回:
+    list: 包含所有叶子键路径的列表。
+    """
+    leaf_keys = []
+    
+    if isinstance(data, dict):
+        for key, value in data.items():
+            current_key = f"{parent_key}.{key}" if parent_key else key
+            leaf_keys.extend(get_leaf_keys(value, current_key))
+            
+    elif isinstance(data, list):
+        current_key = f"{parent_key}[]"
+        if data:
+            leaf_keys.extend(get_leaf_keys(data[0], current_key))
+        else:
+            leaf_keys.append(current_key)
+            
     else:
-        paths.append(prefix)
-    return paths
+        leaf_keys.append(parent_key)
+        
+    return leaf_keys
 
-# 设置命令行参数
-parser = argparse.ArgumentParser(description="提取 JSON 叶子键路径")
-parser.add_argument('-i', '--input', required=True, help="输入 JSON 文件名")
-parser.add_argument('-o', '--output', required=True, help="输出文本文件名")
-args = parser.parse_args()
+def process_json_file(input_file, output_file, use_na_filter):
+    """
+    读取 JSON 文件，提取叶子键路径并写入输出文件。
+    可以根据 use_na_filter 标志决定是否进行正则匹配和替换。
+    """
+    try:
+        with open(input_file, 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+            
+        keys = get_leaf_keys(json_data)
+        
+        # 只有在需要过滤时才编译正则表达式
+        if use_na_filter:
+            regex = re.compile(r'^.*\.(N/A|NA)[_-]?[\w\d]*$')
 
-# 读取 JSON 文件
-try:
-    with open(args.input, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-except FileNotFoundError:
-    print(f"文件 {args.input} 未找到！")
-    exit()
-except json.JSONDecodeError:
-    print(f"文件 {args.input} 不是有效的 JSON 文件！")
-    exit()
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for key in keys:
+                # 根据标志位决定是否应用过滤规则
+                if use_na_filter and regex.match(key):
+                    f.write("N/A\n")
+                else:
+                    f.write(key + '\n')
+        
+        print(f"成功将所有叶子键路径写入 {output_file} 文件。")
 
-# 提取路径
-all_paths = extract_paths(data)
+    except FileNotFoundError:
+        print(f"错误：输入文件 '{input_file}' 不存在。")
+    except json.JSONDecodeError:
+        print(f"错误：文件 '{input_file}' 不是一个有效的 JSON 文件。")
+    except Exception as e:
+        print(f"发生未知错误：{e}")
 
-# 写入输出文件
-with open(args.output, 'w', encoding='utf-8') as f:
-    for path in all_paths:
-        f.write(path.replace('[]', '') + '\n')
+### 主执行入口
 
-print(f"提取完成，结果已保存到 {args.output}")
+if __name__ == "__main__":
+    input_file = "input.json"
+    output_file = "output.txt"
+    # 新增标志位，默认为 True，表示使用 NA 过滤
+    use_na_filter = True
+
+    args = sys.argv[1:]
+    
+    # 命令行参数输入
+    if len(args) > 0:
+        if '-f' in args or '--full-na' in args:
+            use_na_filter = False
+            # 从参数列表中移除，以便后续解析 -i 和 -o
+            if '-f' in args:
+                args.remove('-f')
+            if '--full-na' in args:
+                args.remove('--full-na')
+
+        i_flag_index = -1
+        o_flag_index = -1
+        try:
+            i_flag_index = args.index('-i')
+            if i_flag_index + 1 < len(args):
+                input_file = args[i_flag_index + 1]
+            else:
+                print("错误：-i 参数需要一个输入文件名。")
+                sys.exit(1)
+        except ValueError:
+            pass
+        
+        try:
+            o_flag_index = args.index('-o')
+            if o_flag_index + 1 < len(args):
+                output_file = args[o_flag_index + 1]
+            else:
+                print("错误：-o 参数需要一个输出文件名。")
+                sys.exit(1)
+        except ValueError:
+            pass
+
+    # 检查输入文件是否存在
+    if not os.path.exists(input_file):
+        print(f"错误：输入文件 '{input_file}' 不存在。")
+    else:
+        # 将新参数传递给处理函数
+        process_json_file(input_file, output_file, use_na_filter)
